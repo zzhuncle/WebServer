@@ -19,7 +19,7 @@
 #include<stdarg.h>
 #include<sys/uio.h> // 分散写
 
-#define TIMESLOT      5      // 定时器周期：秒
+#define TIMESLOT      2      // 定时器周期：秒
 
 class util_timer;
 class sort_timer_lst;

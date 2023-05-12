@@ -42,7 +42,6 @@ public:
     // 这个函数只考虑被调整的定时器的，超时时间延长的情况，即该定时器需要往链表的尾部移动
     void adjust_timer(util_timer* timer)
     {
-        printf("begin adjust\n");;
         if (!timer)
             return;
         util_timer* tmp = timer->next;
@@ -61,12 +60,10 @@ public:
             timer->next->prev = timer->prev;
             add_timer(timer, timer->next);
         }
-        printf("end adjust\n");;
     }
     // 将目标定时器timer添加到链表中
     void add_timer(util_timer* timer) 
     {
-        printf("begin add\n");;
         if (!timer)
             return;
         if (!head) {
@@ -83,12 +80,10 @@ public:
             return;
         }
         add_timer(timer, head);
-        printf("end add\n");;
     }
     // 将目标定时器 timer 从链表中删除
     void del_timer(util_timer* timer)
     {
-        printf("begin del\n");;
         if(!timer)
             return;
         // 下面这个条件成立表示链表中只有一个定时器，即目标定时器
@@ -118,16 +113,14 @@ public:
         timer->prev->next = timer->next;
         timer->next->prev = timer->prev;
         delete timer;
-        printf("end del\n");;
     }
 
     // SIGALARM信号每次被触发就在其信号处理函数中执行一次tick()函数，以处理链表上的到期任务
     void tick() 
     {
-        printf("begin tick\n");;
         if(!head)
             return;
-        printf("timer tick\n\n");;
+        printf("timer tick\n");;
         time_t cur = time(NULL);  // 获取当前系统时间
         util_timer* tmp = head;
         // 从头节点开始依次处理每个定时器，直到遇到一个尚未到期的定时器
@@ -144,7 +137,6 @@ public:
             delete tmp;
             tmp = head;
         }
-        printf("end tick\n");;
     }
 
 private:
