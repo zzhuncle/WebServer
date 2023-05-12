@@ -14,3 +14,13 @@ struct client_data
     util_timer* timer;                   // 定时器
 };
 
+// 定时器链表，一个升序、双向链表，带有头节点和尾节点
+class sort_timer_lst 
+{
+public:
+    // sort_timer_lst(): head(NULL), tail(NULL) {};
+
+    time_t expire;    // 任务超时时间
+
+};
+
