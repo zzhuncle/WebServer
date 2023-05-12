@@ -4,6 +4,7 @@
 // 静态成员变量初始化
 int http_conn::m_epollfd    = -1;    // 所有的socket上的事件都被注册到同一个epoll对象中
 int http_conn::m_user_count = 0;  // 用于统计用户的数量
+sort_timer_lst http_conn::m_timer_lst;
 
 // 定义HTTP响应的一些状态信息
 const char* ok_200_title    = "OK";
@@ -30,9 +31,10 @@ void setnonblocking(int fd)
 // 添加文件描述符到epoll中
 void addfd(int epollfd, int fd, bool oneshot)
 {
+    // epoll事件
     epoll_event event;
     event.data.fd = fd;
-    // 水平触发模式
+    // 水平触发模式 EPOLLRDHUP代表对端断开连接
     event.events = EPOLLIN | EPOLLRDHUP;
 
     // oneshot目的：即使使用ET模式，一个socket上的某个事件还是可能被触发多次，比如一个线程在读完某个socket
@@ -81,8 +83,16 @@ void http_conn::init(int sockfd, const sockaddr_in &addr)
     addfd(m_epollfd, sockfd, true);
     http_conn::m_user_count++;
 
-    // 初始化状态机
+    // 初始化
     init();
+
+    // 创建定时器，设置其回调函数与超时时间，然后绑定定时器与用户数据，最后将定时器添加到链表m_timer_lst中
+    util_timer* timer = new util_timer;
+    timer->user_data = this;
+    timer->callback_func = http_conn::callback_func;
+    timer->expire = time(NULL) + 3 * TIMESLOT;
+    this->timer = timer;
+    m_timer_lst.add_timer(timer);
 }
 
 // 关闭连接
@@ -129,7 +139,7 @@ bool http_conn::write()
     
     if (bytes_to_send == 0) {
         // 将要发送的字节为0，这一次响应结束
-        modfd( m_epollfd, m_sockfd, EPOLLIN ); 
+        modfd(m_epollfd, m_sockfd, EPOLLIN); 
         init();
         return true;
     }
