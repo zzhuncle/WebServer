@@ -29,6 +29,7 @@ public:
     util_timer* timer;                         // 定时器
 
     static int m_epollfd;                      // 所有的socket上的事件都被注册到同一个epoll对象中
+    static int m_request_cnt;                  // 用于统计请求的数量
     static int m_user_count;                   // 用于统计用户的数量
     static const int FILENAME_LEN = 200;       // 文件名的最大长度
     static const int READ_BUFFER_SIZE = 2048;  // 读缓冲区大小
@@ -36,12 +37,7 @@ public:
     static sort_timer_lst m_timer_lst;         // 初始化定时器
 
     // 定时器回调函数，删除非活动连接socket上的注册事件并关闭
-    static void callback_func(http_conn* user_data)
-    {
-        epoll_ctl(http_conn::m_epollfd, EPOLL_CTL_DEL, user_data->m_sockfd, 0);
-        close(user_data->m_sockfd);
-        printf("close fd %d\n", user_data->m_sockfd);
-    }
+    static void callback_func(http_conn* user_data);
 
     // HTTP请求方法，这里只支持GET
     enum METHOD {GET = 0, POST, HEAD, PUT, DELETE, TRACE, OPTIONS, CONNECT};

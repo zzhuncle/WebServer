@@ -1,3 +1,4 @@
+#include"log.h"
 #include"locker.h"
 #include"threadpool.h"
 #include"http_conn.h"
@@ -51,18 +52,23 @@ extern void modfd(int epollfd, int fd, int ev);
 // 设置文件非阻塞
 extern void setnonblocking(int fd);
 
+// 初始化日志
+int m_close_log = 0;
+
 // 主线程
 int main(int argc, char* argv[])
 {
     // 至少要传递端口号
     if (argc <= 1) {
-        std::cout << "按照如下格式运行：" << basename(argv[0]) << " port_number" << std::endl;
+        LOG_ERROR("run as: %s port_number\n", basename(argv[0]));
+        return 0;
     }
     // 获取端口号
     int port = atoi(argv[1]);
     // 对SIGPIPE信号做处理
     addsig(SIGPIPE, SIG_IGN); // 忽略SIGPIPE信号 https://blog.csdn.net/chengcheng1024/article/details/108104507
-
+    // 初始化日志
+    Log::get_instance()->init("./ServerLog", m_close_log, 2000, 100, 800);
     // 创建线程池，初始化线程池
     threadpool<http_conn>* pool = NULL;
     try {
@@ -125,7 +131,7 @@ int main(int argc, char* argv[])
         // 并将当前所有就绪的epoll_event复制到events数组中
         int num = epoll_wait(epollfd, events, MAX_EVENT_NUM, -1);                
         if ((num < 0) && (errno != EINTR)) {
-            std::cout << "epoll failure" << std::endl;
+            LOG_ERROR("EPOLL failed.\n");
             break;
         }
         // 循环遍历事件数组
@@ -171,10 +177,12 @@ int main(int argc, char* argv[])
             }
             // 对方异常断开或者错误事件
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+                LOG_INFO("-------EPOLLRDHUP | EPOLLHUP | EPOLLERR--------\n");
                 users[sockfd].close_conn();
                 http_conn::m_timer_lst.del_timer(users[sockfd].timer);      // 移除其对应的定时器
             } 
             else if (events[i].events & EPOLLIN) {
+                LOG_INFO("-------EPOLLIN-------\n");
                 // 一次性将所有数据读出来
                 if (users[sockfd].read()) {
                     // 将任务追加到线程池中
@@ -185,6 +193,7 @@ int main(int argc, char* argv[])
                 }
             } 
             else if (events[i].events & EPOLLOUT) {
+                LOG_INFO("-------EPOLLOUT--------\n");
                 // 一次性将所有数据写出去
                 if (!users[sockfd].write()) {
                     users[sockfd].close_conn();

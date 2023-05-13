@@ -1,6 +1,7 @@
 #ifndef LST_TIMER_H
 #define LST_TIMER_H
 
+#include"log.h"
 #include<stdio.h>
 #include<time.h>
 #include<arpa/inet.h>
@@ -42,8 +43,11 @@ public:
     // 这个函数只考虑被调整的定时器的，超时时间延长的情况，即该定时器需要往链表的尾部移动
     void adjust_timer(util_timer* timer)
     {
-        if (!timer)
+        LOG_DEBUG("===========adjusting timer.=============\n");
+        if (!timer) {
+            LOG_ERROR("===========timer null.=========\n");
             return;
+        }
         util_timer* tmp = timer->next;
         // 如果被调整的目标定时器处在链表的尾部，或者该定时器新的超时时间值仍然小于其下一个定时器的超时时间则不用调整
         if(!tmp || ( timer->expire < tmp->expire))
@@ -60,12 +64,16 @@ public:
             timer->next->prev = timer->prev;
             add_timer(timer, timer->next);
         }
+        LOG_DEBUG("===========adjusted timer.=============\n");
     }
     // 将目标定时器timer添加到链表中
     void add_timer(util_timer* timer) 
     {
-        if (!timer)
+        LOG_DEBUG("===========adding timer.=============\n");
+        if (!timer) {
+            LOG_ERROR("===========timer null.=========\n");
             return;
+        }
         if (!head) {
             head = tail = timer;
             return;
@@ -80,12 +88,16 @@ public:
             return;
         }
         add_timer(timer, head);
+        LOG_DEBUG("===========added timer.==========\n");
     }
     // 将目标定时器 timer 从链表中删除
     void del_timer(util_timer* timer)
     {
-        if(!timer)
+        LOG_DEBUG("===========deleting timer.=============\n");
+        if (!timer) {
+            LOG_ERROR("===========timer null.=========\n");
             return;
+        }
         // 下面这个条件成立表示链表中只有一个定时器，即目标定时器
         if((timer == head) && (timer == tail)) {
             delete timer;
@@ -113,6 +125,7 @@ public:
         timer->prev->next = timer->next;
         timer->next->prev = timer->prev;
         delete timer;
+        LOG_DEBUG("===========deleted timer.=============\n");
     }
 
     // SIGALARM信号每次被触发就在其信号处理函数中执行一次tick()函数，以处理链表上的到期任务
@@ -120,7 +133,7 @@ public:
     {
         if(!head)
             return;
-        printf("timer tick\n");;
+        LOG_DEBUG("timer tick.\n");
         time_t cur = time(NULL);  // 获取当前系统时间
         util_timer* tmp = head;
         // 从头节点开始依次处理每个定时器，直到遇到一个尚未到期的定时器

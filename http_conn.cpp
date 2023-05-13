@@ -1,9 +1,11 @@
+#include"log.h"
 #include"http_conn.h"
 #include<cstdio>
 
 // 静态成员变量初始化
-int http_conn::m_epollfd    = -1;    // 所有的socket上的事件都被注册到同一个epoll对象中
-int http_conn::m_user_count = 0;  // 用于统计用户的数量
+int http_conn::m_epollfd     = -1;    // 所有的socket上的事件都被注册到同一个epoll对象中
+int http_conn::m_user_count  = 0;     // 用于统计用户的数量
+int http_conn::m_request_cnt = 0;    // 用于统计请求的数量
 sort_timer_lst http_conn::m_timer_lst;
 
 // 定义HTTP响应的一些状态信息
@@ -69,6 +71,14 @@ void modfd(int epollfd, int fd, int ev)
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
+// 定时器回调函数，删除非活动连接socket上的注册事件并关闭
+void http_conn::callback_func(http_conn* user_data)
+{
+    epoll_ctl(http_conn::m_epollfd, EPOLL_CTL_DEL, user_data->m_sockfd, 0);
+    close(user_data->m_sockfd);
+    LOG_INFO("close fd %d\n", user_data->m_sockfd);
+}
+
 // 初始化新接收的连接
 void http_conn::init(int sockfd, const sockaddr_in &addr)
 {
@@ -85,7 +95,10 @@ void http_conn::init(int sockfd, const sockaddr_in &addr)
 
     // 初始化
     init();
-
+    char ip[16] = "";
+    const char* str = inet_ntop(AF_INET, &addr.sin_addr.s_addr, ip, sizeof(ip));
+    LOG_INFO("The No.%d user. sock_fd = %d, ip = %s.\n", m_user_count, m_sockfd, str);
+    
     // 创建定时器，设置其回调函数与超时时间，然后绑定定时器与用户数据，最后将定时器添加到链表m_timer_lst中
     util_timer* timer = new util_timer;
     timer->user_data = this;
@@ -102,6 +115,7 @@ void http_conn::close_conn()
         removefd(m_epollfd, m_sockfd);
         m_sockfd = -1;
         http_conn::m_user_count--; // 关闭一个连接，客户端总数量-1
+        LOG_INFO("closing fd: %d, rest user num :%d\n", m_sockfd, http_conn::m_user_count);
     } 
 }
 
@@ -128,7 +142,9 @@ bool http_conn::read()
         }
         m_read_idx += bytes_read;
     }
-    std::cout << "读取到了" << m_read_buf << std::endl;
+    m_request_cnt++;
+    LOG_INFO("sock_fd = %d read done. request cnt = %d\n", m_sockfd, m_request_cnt);    // 全部读取完毕
+    
     return true;
 }
 
@@ -136,6 +152,7 @@ bool http_conn::read()
 bool http_conn::write()
 {
     int temp = 0;
+    LOG_INFO("sock_fd = %d writing %d bytes. request cnt = %d\n", m_sockfd, bytes_to_send, m_request_cnt);
     
     if (bytes_to_send == 0) {
         // 将要发送的字节为0，这一次响应结束
@@ -162,10 +179,12 @@ bool http_conn::write()
         bytes_to_send -= temp;
 
         if (bytes_have_send >= m_iv[0].iov_len) {
+            // 响应头已经发送完毕
             m_iv[0].iov_len = 0;
             m_iv[1].iov_base = m_file_address + (bytes_have_send - m_write_idx);
             m_iv[1].iov_len = bytes_to_send;
         } else {
+            // 没有发送完毕，修改下次写数据的位置
             m_iv[0].iov_base = m_write_buf + bytes_have_send;
             m_iv[0].iov_len = m_iv[0].iov_len - temp;
         }
@@ -188,8 +207,11 @@ bool http_conn::write()
 // 由线程池中的工作线程调用，处理HTTP请求的入口函数，业务逻辑
 void http_conn::process()
 {
+    LOG_DEBUG("=======parse request, create response.=======\n");
+    LOG_DEBUG("=============process_reading=============\n");
     // 解析HTTP请求
     HTTP_CODE read_res = process_read();
+    LOG_DEBUG("========PROCESS_READ HTTP_CODE : %d========\n", read_res);
     if (read_res == NO_RESOURCE) { // 读取不完整，继续获取客户端数据
         modfd(m_epollfd, m_sockfd, EPOLLIN);
         return;
@@ -242,9 +264,8 @@ http_conn::HTTP_CODE http_conn::process_read()
 
         // 获取一行数据
         text = get_line();
-
         m_start_line = m_checked_idx;
-        std::cout << "got 1 http line: " << text << std::endl;
+        LOG_DEBUG(">>>>>> %s\n", text);
 
         switch(m_check_state) {
             case CHECK_STATE_REQUESTLINE:
@@ -294,28 +315,28 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text)
     // GET\0/index.html HTTP/1.1
     *m_url++ = '\0';    // 置位空字符，字符串结束符
     char* method = text;
-    if ( strcasecmp(method, "GET") == 0 ) { // 忽略大小写比较
+    if (strcasecmp(method, "GET") == 0) { // 忽略大小写比较
         m_method = GET;
     } else {
         return BAD_REQUEST;
     }
     // /index.html HTTP/1.1
     // 检索字符串 str1 中第一个不在字符串 str2 中出现的字符下标。
-    m_version = strpbrk( m_url, " \t" );
+    m_version = strpbrk(m_url, " \t");
     if (!m_version) {
         return BAD_REQUEST;
     }
     *m_version++ = '\0';
-    if (strcasecmp( m_version, "HTTP/1.1") != 0 ) {
+    if (strcasecmp(m_version, "HTTP/1.1") != 0) {
         return BAD_REQUEST;
     }
     // http://192.168.110.129:10000/index.html
-    if (strncasecmp(m_url, "http://", 7) == 0 ) {   
+    if (strncasecmp(m_url, "http://", 7) == 0) {   
         m_url += 7;
         // 在参数 str 所指向的字符串中搜索第一次出现字符 c（一个无符号字符）的位置。
-        m_url = strchr( m_url, '/' );
+        m_url = strchr(m_url, '/');
     }
-    if ( !m_url || m_url[0] != '/' ) {
+    if (!m_url || m_url[0] != '/') {
         return BAD_REQUEST;
     }
     // 检查状态变成检查头
@@ -327,34 +348,34 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char* text)
 http_conn::HTTP_CODE http_conn::parse_headers(char* text)
 {
     // 遇到空行，表示头部字段解析完毕
-    if( text[0] == '\0' ) {
+    if(text[0] == '\0') {
         // 如果HTTP请求有消息体，则还需要读取m_content_length字节的消息体，
         // 状态机转移到CHECK_STATE_CONTENT状态
-        if ( m_content_length != 0 ) {
+        if (m_content_length != 0) {
             m_check_state = CHECK_STATE_CONTENT;
             return NO_REQUEST;
         }
         // 否则说明我们已经得到了一个完整的HTTP请求
         return GET_REQUEST;
-    } else if ( strncasecmp( text, "Connection:", 11 ) == 0 ) {
+    } else if (strncasecmp(text, "Connection:", 11) == 0) {
         // 处理Connection 头部字段  Connection: keep-alive
         text += 11;
-        text += strspn( text, " \t" );
-        if ( strcasecmp( text, "keep-alive" ) == 0 ) {
+        text += strspn(text, " \t");
+        if (strcasecmp(text, "keep-alive") == 0) {
             m_linger = true;
         }
-    } else if ( strncasecmp( text, "Content-Length:", 15 ) == 0 ) {
+    } else if (strncasecmp(text, "Content-Length:", 15) == 0) {
         // 处理Content-Length头部字段
         text += 15;
-        text += strspn( text, " \t" );
+        text += strspn(text, " \t");
         m_content_length = atol(text);
-    } else if ( strncasecmp( text, "Host:", 5 ) == 0 ) {
+    } else if (strncasecmp(text, "Host:", 5) == 0) {
         // 处理Host头部字段
         text += 5;
-        text += strspn( text, " \t" );
+        text += strspn(text, " \t");
         m_host = text;
     } else {
-        printf( "oop! unknow header %s\n", text );
+        LOG_DEBUG("oop! unknow header: %s\n", text);
     }
     return NO_REQUEST;
 }
@@ -374,7 +395,7 @@ http_conn::HTTP_CODE http_conn::parse_content(char* text)
 http_conn::LINE_STATUS http_conn::parse_line()
 {
     char tmp;
-    for ( ;m_checked_idx < m_read_idx;m_checked_idx++) {
+    for (;m_checked_idx < m_read_idx;m_checked_idx++) {
         tmp = m_read_buf[m_checked_idx];
         if (tmp == '\r') {
             if ((m_checked_idx + 1) == m_read_idx) {
@@ -460,27 +481,32 @@ bool http_conn::add_response(const char* format, ...)
 
 bool http_conn::add_status_line(int status, const char* title) 
 {
+    LOG_DEBUG("<<<<<<< %s %d %s\r\n", "HTTP/1.1", status, title); 
     return add_response("%s %d %s\r\n", "HTTP/1.1", status, title);
 }
 
 bool http_conn::add_headers(int content_len)
  {
+    LOG_DEBUG("<<<<<<< Content-Length: %d\r\n", content_len);  
     if (!add_response("Content-Length: %d\r\n", content_len)) {
         return false;
     }
+    LOG_DEBUG("<<<<<<< Content-Type:%s\r\n", "text/html"); 
     if (!add_response("Content-Type:%s\r\n", "text/html")) {
         return false;
     }
+    LOG_DEBUG("<<<<<<< Connection: %s\r\n", ( m_linger == true ) ? "keep-alive" : "close" );
     if (!add_response("Connection: %s\r\n", (m_linger == true) ? "keep-alive" : "close")) {
         return false;
     }
+    LOG_DEBUG("<<<<<<< %s", "\r\n" ); 
     if (!add_response("%s", "\r\n")) {
         return false;
     }
     return true;
 }
 
-bool http_conn::add_content( const char* content )
+bool http_conn::add_content(const char* content)
 {
     return add_response("%s", content);
 }
@@ -520,6 +546,7 @@ bool http_conn::process_write(HTTP_CODE res)
         case FILE_REQUEST:
             add_status_line(200, ok_200_title);
             add_headers(m_file_stat.st_size);
+            LOG_DEBUG("<<<<<<< %s\n", m_file_address);
             // 封装m_iv
             m_iv[0].iov_base = m_write_buf;
             m_iv[0].iov_len = m_write_idx;
@@ -527,6 +554,7 @@ bool http_conn::process_write(HTTP_CODE res)
             m_iv[1].iov_len = m_file_stat.st_size;
             // 初始化m_iv_count
             m_iv_count = 2;
+            // 响应头大小 + 文件大小
             bytes_to_send = m_write_idx + m_file_stat.st_size;
             return true;
         default:

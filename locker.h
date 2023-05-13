@@ -50,7 +50,7 @@ public:
         // mutex + 1
         return pthread_cond_signal(&m_cond) == 0;
     }
-    bool broadcast(pthread_mutex_t *mutex) { 
+    bool broadcast() { 
         // 将所有线程都唤醒
         return pthread_cond_broadcast(&m_cond) == 0;
     }

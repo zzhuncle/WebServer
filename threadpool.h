@@ -1,5 +1,6 @@
 #ifndef THREADPOOL_H
 #define THREADPOOL_H
+#include"log.h"
 #include<pthread.h>
 #include<list>
 #include"locker.h"
@@ -46,7 +47,7 @@ threadpool<T>::threadpool(int thread_number, int max_requests) :
     }
     // 创建thread_number个线程，并设置为线程脱离
     for (int i = 0;i < thread_number;i++) {
-        std::cout << "create the " << i << "th thread" << std::endl;
+        LOG_DEBUG("create the %dth thread\n", i);
         // worker子线程要执行的代码 worker必须是静态函数
         if (pthread_create(m_threads + i, NULL, worker, this) != 0) {
             delete[] m_threads;
