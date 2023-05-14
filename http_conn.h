@@ -2,6 +2,8 @@
 #define HTTPCONNECTION_H
 #include"locker.h"
 #include"lst_timer.h"
+#include"sql_connection_pool.h"
+#include<map>
 #include<iostream>
 #include<string.h>
 #include<sys/epoll.h>
@@ -27,6 +29,7 @@ class sort_timer_lst;
 class http_conn {
 public:
     util_timer* timer;                         // 定时器
+    MYSQL *mysql;                              // 数据库连接
 
     static int m_epollfd;                      // 所有的socket上的事件都被注册到同一个epoll对象中
     static int m_request_cnt;                  // 用于统计请求的数量
@@ -58,7 +61,8 @@ public:
     http_conn() {};
     ~http_conn() {};
     void process(); // 处理客户端的请求
-    void init(int sockfd, const sockaddr_in &addr); // 初始化新接收的连接
+    void init(int sockfd, const sockaddr_in &addr, 
+        string user, string passwd, string sqlname); // 初始化新接收的连接
     void close_conn(); // 关闭连接
     bool read(); // 非阻塞读 因为要一次性读出所有数据
 
@@ -77,6 +81,9 @@ public:
     bool add_content(const char* content);
     bool add_status_line(int status, const char* title);
     bool add_headers(int content_length);
+
+    sockaddr_in *get_address() { return &m_address; }
+    void init_mysql_result(connection_pool *conn_pool);
 
 private:
     int m_sockfd;                       // 该HTTP连接的socket
@@ -111,5 +118,10 @@ private:
 
     int bytes_to_send;                  // 将要发送的数据的字节数
     int bytes_have_send;                // 已经发送的字节数
+
+    char *m_post_str;                     // 存储请求头数据
+    char sql_user[100];
+    char sql_passwd[100];
+    char sql_name[100];
 };
 #endif

@@ -1,5 +1,6 @@
 #include"log.h"
 #include"locker.h"
+#include"sql_connection_pool.h"
 #include"threadpool.h"
 #include"http_conn.h"
 #include<iostream>
@@ -67,8 +68,16 @@ int main(int argc, char* argv[])
     int port = atoi(argv[1]);
     // 对SIGPIPE信号做处理
     addsig(SIGPIPE, SIG_IGN); // 忽略SIGPIPE信号 https://blog.csdn.net/chengcheng1024/article/details/108104507
+    
     // 初始化日志
-    Log::get_instance()->init("./ServerLog", m_close_log, 2000, 100, 800);
+    Log::get_instance()->init("./ServerLog", m_close_log, 2000, 10000, 800);
+
+    // 初始化数据库
+    string user = "root";
+    string passwd = "root";
+    string database_name = "yourdb";
+    connection_pool::get_instance()->init("localhost", user, passwd, database_name, 3306, 8);
+
     // 创建线程池，初始化线程池
     threadpool<http_conn>* pool = NULL;
     try {
@@ -79,6 +88,10 @@ int main(int argc, char* argv[])
 
     // 创建数组用于所有客户端信息
     http_conn* users = new http_conn[MAX_FD];
+
+    // 初始化数据库读取表
+    users->init_mysql_result(connection_pool::get_instance());
+
     // 创建监听的套接字
     int listenfd = socket(AF_INET, SOCK_STREAM, 0);
     // 绑定之前设置端口复用
@@ -150,7 +163,7 @@ int main(int argc, char* argv[])
                     continue;
                 }
                 // 将新的客户数据初始化，放到数组中
-                users[connfd].init(connfd, client_address);
+                users[connfd].init(connfd, client_address, user, passwd, database_name);
             } 
             // 读管道有数据，SIGALRM 或 SIGTERM信号触发
             else if (sockfd == pipefd[0] && (events[i].events & EPOLLIN)) {  

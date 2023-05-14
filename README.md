@@ -21,3 +21,39 @@ Requests: 37726 susceed, 0 failed.
 生产者消费者模型
 
 LOG_DEBUG的使用
+
+## 实现post请求解析 连接数据库
+
+```c++
+g++ *.cpp -o main -pthread -lmysqlclient 
+```
+
+MySQL8.0后版本不支持密码登入，需配置
+
+```shell
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY "root";
+```
+
+数据库初始化命令如下
+
+```sql
+-- 建立yourdb库
+create database yourdb;
+
+-- 创建user表
+USE yourdb;
+CREATE TABLE user(
+    username char(50) NULL,
+    passwd char(50) NULL
+) ENGINE=InnoDB;
+
+-- 添加数据
+INSERT INTO user(username, passwd) VALUES('name', 'passwd');
+
+-- sudo service mysql start
+-- sudo mysql -uroot
+-- ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY "root";
+```
+
+## 文件上传、下载功能
+
