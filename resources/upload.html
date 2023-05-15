@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>upload</title>
+    </head>
+    <body><br/><br/>
+<div align="center"><font size="5"> <strong>上传文件</strong></font></div>
+<br/>
+<br/>
+<br/>
+    <div style="width: 400px; height: 100px; margin: 0 auto;">
+        <!-- enctype 属性规定在发送到服务器之前应该如何对表单数据进行编码，
+        multipart/form-data是将文件以二进制的形式上传 -->
+        <form method="post" action="9" enctype="multipart/form-data">
+            请选择文件：<input type="file" name="file_data"><br>
+            注意：目前仅支持8KB以下文本文件<br>
+            <input type="submit" value="提交">
+        </form>
+    </div>
+</html>

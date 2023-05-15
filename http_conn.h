@@ -28,16 +28,16 @@ class sort_timer_lst;
 
 class http_conn {
 public:
-    util_timer* timer;                         // 定时器
-    MYSQL *mysql;                              // 数据库连接
+    util_timer* timer;                                 // 定时器
+    MYSQL *mysql;                                      // 数据库连接
 
-    static int m_epollfd;                      // 所有的socket上的事件都被注册到同一个epoll对象中
-    static int m_request_cnt;                  // 用于统计请求的数量
-    static int m_user_count;                   // 用于统计用户的数量
-    static const int FILENAME_LEN = 200;       // 文件名的最大长度
-    static const int READ_BUFFER_SIZE = 2048;  // 读缓冲区大小
-    static const int WRITE_BUFFER_SIZE = 1024; // 写缓冲区大小
-    static sort_timer_lst m_timer_lst;         // 初始化定时器
+    static int m_epollfd;                              // 所有的socket上的事件都被注册到同一个epoll对象中
+    static int m_request_cnt;                          // 用于统计请求的数量
+    static int m_user_count;                           // 用于统计用户的数量
+    static const int FILENAME_LEN = 200;               // 文件名的最大长度
+    static const int READ_BUFFER_SIZE = 8 * 1024;      // 读缓冲区大小
+    static const int WRITE_BUFFER_SIZE = 8 * 1024;     // 写缓冲区大小
+    static sort_timer_lst m_timer_lst;                 // 初始化定时器
 
     // 定时器回调函数，删除非活动连接socket上的注册事件并关闭
     static void callback_func(http_conn* user_data);
@@ -119,7 +119,7 @@ private:
     int bytes_to_send;                  // 将要发送的数据的字节数
     int bytes_have_send;                // 已经发送的字节数
 
-    char *m_post_str;                     // 存储请求头数据
+    char *m_post_str;                   // 存储请求头数据
     char sql_user[100];
     char sql_passwd[100];
     char sql_name[100];

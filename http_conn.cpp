@@ -154,6 +154,12 @@ void http_conn::close_conn()
 // 非阻塞读，循环读取客户数据，直到无数据或断开连接
 bool http_conn::read() 
 {
+    if (timer) { // 更新超时时间
+        time_t cur_time = time(NULL);
+        timer->expire = cur_time + 3 * TIMESLOT;
+        m_timer_lst.adjust_timer(timer);
+    }
+
     if (m_read_idx >= READ_BUFFER_SIZE) {
         return false;
     }
@@ -183,6 +189,12 @@ bool http_conn::read()
 // 非阻塞写，分散写，写HTTP响应
 bool http_conn::write()
 {
+    if (timer) { // 更新超时时间
+        time_t cur_time = time(NULL);
+        timer->expire = cur_time + 3 * TIMESLOT;
+        m_timer_lst.adjust_timer(timer);
+    }
+
     int temp = 0;
     LOG_INFO("sock_fd = %d writing %d bytes. request cnt = %d\n", m_sockfd, bytes_to_send, m_request_cnt);
     
@@ -196,7 +208,7 @@ bool http_conn::write()
     while (1) {
         // 分散写，writev以顺序m_iv[0]、m_iv[1]至m_iv[m_iv-1]从各缓冲区中聚集输出数据到m_sockfd
         temp = writev(m_sockfd, m_iv, m_iv_count);
-        if (temp <= -1) {
+        if (temp < 0) {
             // 如果TCP写缓冲没有空间，则等待下一轮EPOLLOUT事件，虽然在此期间，
             // 服务器无法立即接收到同一客户的下一个请求，但可以保证连接的完整性。
             if(errno == EAGAIN) {
@@ -218,7 +230,7 @@ bool http_conn::write()
         } else {
             // 没有发送完毕，修改下次写数据的位置
             m_iv[0].iov_base = m_write_buf + bytes_have_send;
-            m_iv[0].iov_len = m_iv[0].iov_len - temp;
+            m_iv[0].iov_len = m_iv[0].iov_len - bytes_have_send;
         }
 
         if (bytes_to_send <= 0) {
@@ -226,7 +238,7 @@ bool http_conn::write()
             unmap();
             modfd(m_epollfd, m_sockfd, EPOLLIN); // 重置监听事件
 
-            if (m_linger) {
+            if (m_linger) { // http请求是否要保持连接
                 init();
                 return true;
             } else {
@@ -253,6 +265,8 @@ void http_conn::process()
     bool write_res = process_write(read_res);
     if (!write_res) {
         close_conn();
+        if(timer) // 移除其对应的定时器
+            m_timer_lst.del_timer(timer);
     } 
     // 因为用了modfd，所以每次都需要重新修改状态
     modfd(m_epollfd, m_sockfd, EPOLLOUT);
@@ -322,6 +336,31 @@ http_conn::HTTP_CODE http_conn::process_read()
             }
             case CHECK_STATE_CONTENT:
             {
+                // 上传文件 仅支持8KB以下文本文件
+                const char *p = strrchr(m_url, '/');
+                if (m_method == POST && p[1] == '9') { 
+                    string body = text, filename;
+                    size_t st = 0, ed = body.find("\r\n");
+                    string boundary = body.substr(0, ed);
+
+                    // 解析文件信息
+                    st = body.find("filename=\"", ed) + strlen("filename=\"");
+                    ed = body.find("\"", st);
+                    filename = body.substr(st, ed - st);
+                    LOG_INFO("upload file %s", filename.c_str());
+
+                    // 解析文件内容，文件内容以\r\n\r\n开始
+                    st = body.find("\r\n\r\n", ed) + strlen("\r\n\r\n");
+                    ed = body.find(boundary, st) - 2; // 文件结尾也有\r\n
+                    string content = body.substr(st, ed - st);
+                    LOG_DEBUG("upload content %s", content.c_str());
+                    printf("%d", 3);
+
+                    std::ofstream out("./resources/files/" + filename, ios::ate);
+                    out << content;
+                    out.close();
+                }
+
                 res = parse_content(text);
                 if (res == GET_REQUEST) {
                     return do_request();
@@ -543,12 +582,23 @@ http_conn::HTTP_CODE http_conn::do_request()
         strcpy(m_url_real, "/picture.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
-    } else if (*(p + 1) == '6') { // 视频页面
+    } else if (p[1] == '6') { // 视频页面
         char *m_url_real = (char *)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/video.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
         free(m_url_real);
-    } else
+    } else if (p[1] == '7' || p[1] == '9') { // 上传页面
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/upload.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    } else if (p[1] == '8') { // 下载页面
+        char *m_url_real = (char *)malloc(sizeof(char) * 200);
+        strcpy(m_url_real, "/download.html");
+        strncpy(m_real_file + len, m_url_real, strlen(m_url_real));
+        free(m_url_real);
+    }
+    else
         strncpy(m_real_file + len, m_url, FILENAME_LEN - len - 1);
 
     // 获取m_real_file文件的相关的状态信息，-1失败，0成功
