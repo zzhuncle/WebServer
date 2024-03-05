@@ -55,5 +55,4 @@ INSERT INTO user(username, passwd) VALUES('name', 'passwd');
 -- ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY "root";
 ```
 
-## 文件上传、下载功能
 
