@@ -5,6 +5,8 @@ WebServer, C++
 
 ./webbench -c 10000 -t 5 http://192.168.163.30:10000/index.html
 
+-c是端口 -t是访问持续时间，单位为秒
+
 WSL虚拟机测试可支持28000并发访问
 
 Speed=452712 pages/min, 1199686 bytes/sec.
